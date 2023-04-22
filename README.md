@@ -37,6 +37,67 @@ CREATE INDEX idx_nombre_producto ON productos(nombre_productos);
 ---
 
 ### Apartado 2 - Estudio de planes de consulta e índices
+---
+### Apartado 5 - Estudio de índices en actualizaciones
+>
+```sql
+UPDATE detallepedidos
+SET descuento_unitario = descuento_unitario+1
+WHERE PedidoID IN (
+    SELECT PedidoID
+    FROM pedidos
+    WHERE YEAR(fecha_venta) = 2023
+)
+AND ProductoID IN (
+    SELECT ProductoID
+    FROM productos
+    WHERE subcategoriaID IN (
+        SELECT subCategoriaID
+        FROM subcategoriaproducto
+        WHERE nombre_subcategoria like '%Bicicleta%'
+    )
+    
+)AND descuento_unitario <> 0;
+```
+El coste de la operación de UPDATE es de 0.516 sec.
+Una vez creado el índice el coste de la operación de UPDATE es de 0.156 sec
+---
+### Apartado 6 - Desnormalización
+La desnormalización es una técnica empleada en las bases de datos relacionales que tiene como fin mejorar el rendimiento de las consultas y reducir la complejidad del modelo relacional. Permite una redundancia controlada de los datos y una reducción de JOINS de la consulta con el fin de recuperar la información.
+
+_Crear una consulta que devuelva, para cada pedido el nombre del cliente, su pais, fecha del pedido y el total del pedido_
+>
+```sql
+SELECT c.primer_nombre, c.apellidos, c.pais, p.fecha_pedido SUM((d.precio_unitario - d.descuento_unitario)*d.cantidad) AS  total_pedido FROM pedidos p
+INNER JOIN clientes c ON p.clienteID = c.clienteID
+INNER JOIN detallepedidos d ON d.pedidoID = p.pedidoID
+GROUP BY pedidoID;
+```
+_Script para la técnica de desnormalización_
+> 
+```sql
+CREATE TABLE resumen_pedidos(
+    pedidoID INT PRIMARY KEY,
+    cliente_nombre VARCHAR(255),
+    cliente_pais VARCHAR(255),
+    pedidoFecha DATE,
+    total_pedido DECIMAL(10,2)
+);
+```
+_Script para actualizar los datos implicados en la desnormalización_
+>
+```sql
+INSERT INTO resumen_pedidos(pedidoID, cliente_nombre, cliente_pais, pedidoFecha, total_pedido);
+SELECT c.primer_nombre, c.apellidos, c.pais, p.fecha_pedido, SUM((d.precio_unitario - d.descuento_unitario)*d.cantidad) AS total_pedido FROM pedidos p
+INNER JOIN clientes c ON c.clienteID = p.clienteID
+INNER JOIN detallepedidos d ON d.pedidoID = p.pedidoID
+GROUP BY pedidoID
+ON DUPLICATE KEY UPDATE
+    cliente_nombre = VALUES(cliente_nombre)
+    cliente_pais = VALUES(cliente_pais)
+    pedidoFecha = VALUES(pedidoFecha)
+    total_pedido = VALUES(total_pedido)
+```
 
 ### Apartado 7 - Concluciones finales sobre la práctica
 Los índices son estructuras de datos que se utilizan para mejorar y optimizar el tiempo de respuesta de las consultas de tablas grandes. Cuando se realiza una operación de UPDATE sobre una tabla que contiene índices el tiempo de respuesta de esta puede llegar a tardar porque además de actualizar los valores en la tabla también hay que actualizarlos en el índice.
